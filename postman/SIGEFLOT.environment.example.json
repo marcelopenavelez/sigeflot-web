@@ -1,0 +1,12 @@
+{
+  "name": "SIGEFLOT Environment Example",
+  "values": [
+    {"key":"base_url","value":"http://127.0.0.1:8000","enabled":true},
+    {"key":"email","value":"admin@example.com","enabled":true},
+    {"key":"password","value":"replace_with_local_password","enabled":true},
+    {"key":"access_token","value":"","enabled":true},
+    {"key":"vehicle_id","value":"","enabled":true}
+  ],
+  "_postman_variable_scope":"environment",
+  "_postman_export_format":1
+}
