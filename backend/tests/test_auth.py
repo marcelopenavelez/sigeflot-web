@@ -1,4 +1,5 @@
 import jwt
+from app.core.config import get_settings
 from app.core.security import create_access_token, hash_password, verify_password
 from .conftest import token
 
@@ -25,7 +26,7 @@ def test_login_rejections(client):
 def test_token_rejections(client):
     assert client.get("/api/v1/auth/me").status_code == 401
     assert client.get("/api/v1/auth/me", headers={"Authorization":"Bearer invalid"}).status_code == 401
-    expired = jwt.encode({"sub":"1","role":"ADMINISTRADOR","exp":0}, "pytest-isolated-secret-key-which-is-long-enough", algorithm="HS256")
+    expired = jwt.encode({"sub":"1","role":"ADMINISTRADOR","exp":0}, get_settings().jwt_secret_key, algorithm="HS256")
     assert client.get("/api/v1/auth/me", headers={"Authorization":f"Bearer {expired}"}).status_code == 401
 
 def test_admin_user_operations(client, admin_headers):
@@ -38,8 +39,8 @@ def test_rbac_and_validation(client):
     payload={"nombres":"Nuevo","apellidos":"Usuario","email":"nuevo@example.com","password":"PasswordSeguro!1","role_code":"CONSULTA"}
     for role in ("mecanico","chofer","consulta"):
         headers={"Authorization":f"Bearer {token(client, role+'@example.com')}"}
-        assert client.post("/api/v1/users",json=payload,headers=headers).status_code == 401
-        assert client.get("/api/v1/users",headers=headers).status_code == 401
+        assert client.post("/api/v1/users",json=payload,headers=headers).status_code == 403
+        assert client.get("/api/v1/users",headers=headers).status_code == 403
     assert client.post("/api/v1/users",json={**payload,"email":"bad"},headers={"Authorization":f"Bearer {token(client)}"}).status_code == 422
     assert client.post("/api/v1/users",json={**payload,"password":"short"},headers={"Authorization":f"Bearer {token(client)}"}).status_code == 422
 

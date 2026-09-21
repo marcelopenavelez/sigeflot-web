@@ -9,11 +9,13 @@ from app.models import Usuario
 from app.schemas.auth import LoginRequest, TokenResponse, UserRead
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
-bearer = HTTPBearer()
+bearer = HTTPBearer(auto_error=False)
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(bearer), db: Session = Depends(get_db)) -> Usuario:
+def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(bearer), db: Session = Depends(get_db)) -> Usuario:
     from app.core.security import decode_access_token
     try:
+        if credentials is None:
+            raise ValueError("Bearer token missing")
         claims = decode_access_token(credentials.credentials)
         user = db.scalar(select(Usuario).where(Usuario.id == int(str(claims["sub"]))))
     except (jwt.PyJWTError, KeyError, ValueError):
