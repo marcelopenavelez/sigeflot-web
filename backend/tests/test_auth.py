@@ -23,7 +23,7 @@ def test_login_rejections(client):
         assert client.post("/api/v1/auth/login", json={"email":email,"password":password}).status_code == 401
 
 def test_token_rejections(client):
-    assert client.get("/api/v1/auth/me").status_code == 403
+    assert client.get("/api/v1/auth/me").status_code == 401
     assert client.get("/api/v1/auth/me", headers={"Authorization":"Bearer invalid"}).status_code == 401
     expired = jwt.encode({"sub":"1","role":"ADMINISTRADOR","exp":0}, "pytest-isolated-secret-key-which-is-long-enough", algorithm="HS256")
     assert client.get("/api/v1/auth/me", headers={"Authorization":f"Bearer {expired}"}).status_code == 401
