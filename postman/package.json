@@ -1,0 +1,1 @@
+{"private":true,"devDependencies":{"newman":"^6.2.1"},"scripts":{"test:api":"newman run SIGEFLOT.postman_collection.json -e SIGEFLOT.local.postman_environment.json"}}

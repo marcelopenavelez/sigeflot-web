@@ -1,4 +1,6 @@
 .env
+.postman/*.local.postman_environment.json
+postman/*.local.postman_environment.json
 .env.*
 !.env.example
 venv/
