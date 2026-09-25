@@ -1,5 +1,6 @@
 """Safe, transactional importer for the official workbook."""
 import argparse
+import os
 from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
@@ -27,9 +28,28 @@ def put(session, model, column, value, values, stat):
     old=session.scalar(select(model).where(column==value))
     if old: stat["EXISTS"]+=1; return old
     obj=model(**values); session.add(obj); session.flush(); stat["CREATED"]+=1; return obj
-def safe():
-    if make_url(get_settings().database_url).database!="sigeflot_migration_test": raise SystemExit("APPLY_BLOCKED: target database must be exactly sigeflot_migration_test")
-    print("Target database: sigeflot_migration_test")
+def validate_target(database, production, source, environment=None):
+    """Require three independent controls before a production import."""
+    environment = os.environ if environment is None else environment
+    if database == "sigeflot_migration_test":
+        if production:
+            raise SystemExit("APPLY_BLOCKED: --production cannot target sigeflot_migration_test")
+        return
+    if not production:
+        raise SystemExit("APPLY_BLOCKED: non-test targets require --production")
+    if environment.get("APP_ENV") != "production":
+        raise SystemExit("APPLY_BLOCKED: APP_ENV must be production")
+    if environment.get("SIGEFLOT_ALLOW_PRODUCTION_IMPORT") != "true":
+        raise SystemExit("APPLY_BLOCKED: production authorization is missing")
+    if environment.get("SIGEFLOT_IMPORT_CONFIRMATION") != "CONTROL_FLOTA_DIRESA_2026":
+        raise SystemExit("APPLY_BLOCKED: production confirmation is invalid")
+    if Path(source).name != "Control_Flota_DIRESA.xlsx":
+        raise SystemExit("APPLY_BLOCKED: official source filename is required")
+
+def safe(args):
+    database = make_url(get_settings().database_url).database
+    validate_target(database, args.production, args.source)
+    print(f"Target database: {database}")
 def load(w,session,all_):
     S={x:{"CREATED":0,"EXISTS":0,"SKIPPED":0,"ERROR":0} for x in ["vehicles","drivers","providers","service-orders","maintenance","trips","catalogs"]}
     active,inactive=data(w,"Flota_Vehicular"),data(w,"Flota_Inactiva")
@@ -67,8 +87,8 @@ def load(w,session,all_):
       else:session.add(CatalogoMantenimientoBIOrigen(fila_origen=row_number,variante=q[0],tarea_estandarizada=q[1],tipo=q[2]));exist.add(row_number);S["catalogs"]["CREATED"]+=1
     return S
 def main():
-  a=argparse.ArgumentParser();a.add_argument("--source",required=True);a.add_argument("--dry-run",action="store_true");a.add_argument("--apply",action="store_true");a.add_argument("--all",action="store_true");args=a.parse_args();w=load_workbook(Path(args.source),read_only=True,data_only=True)
+  a=argparse.ArgumentParser();a.add_argument("--source",required=True);a.add_argument("--dry-run",action="store_true");a.add_argument("--apply",action="store_true");a.add_argument("--production",action="store_true");a.add_argument("--all",action="store_true");args=a.parse_args();w=load_workbook(Path(args.source),read_only=True,data_only=True)
   if not args.apply: print("DRY_RUN: no database writes; sheets=%d"%len(w.worksheets));return
-  safe()
+  safe(args)
   with SessionLocal.begin() as s: print(load(w,s,args.all))
 if __name__=="__main__":main()
