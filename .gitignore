@@ -3,6 +3,7 @@
 postman/*.local.postman_environment.json
 .env.*
 !.env.example
+!backend/.env.seed.example
 venv/
 .venv/
 node_modules/
@@ -14,3 +15,6 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 Thumbs.db
+Control_Flota_DIRESA.xlsx
+database/import/
+database/backups/

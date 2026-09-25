@@ -39,8 +39,13 @@ class VehicleCreate(VehicleBase):
 class VehicleUpdate(VehicleBase): pass
 
 class VehicleRead(BaseModel):
-    id: int; placa: str; marca: str; modelo: str; anio: int | None; tipo: str; kilometraje_actual: int; estado: str
+    id: int; placa: str; marca: str | None; modelo: str | None; anio: int | None; tipo: str | None; kilometraje_actual: int | None; estado: str
     soat_vencimiento: date | None; revision_tecnica_vencimiento: date | None; observaciones: str | None
+    marca_modelo_origen: str | None = None
+    es_historico: bool = False
+    fuente_origen: str | None = None
+    fecha_inactividad: date | None = None
+    causal_inactividad: str | None = None
     model_config = {"from_attributes": True}
 
 class VehicleListResponse(BaseModel):
