@@ -112,6 +112,12 @@ def client():
     return TestClient(app)
 
 
+@pytest.fixture
+def db_session():
+    with SessionLocal() as db:
+        yield db
+
+
 # ---------------------------------------------------------
 # Token JWT para pruebas
 # ---------------------------------------------------------
