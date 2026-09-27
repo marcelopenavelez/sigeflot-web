@@ -5,6 +5,7 @@ import { LoginPage } from './pages/LoginPage'
 import { VehiclesPage } from './pages/VehiclesPage'
 import { AppLayout } from './layouts/AppLayout'
 import { ExitsPage } from './pages/ExitsPage'
+import { NewOrderPage } from './pages/NewOrderPage'
 import type { Role } from './types/api'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -14,6 +15,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 const exitRoles: Role[] = ['ADMINISTRADOR', 'MECANICO', 'CHOFER']
+const orderRoles: Role[] = ['ADMINISTRADOR', 'MECANICO']
 
 function RoleRoute({ allowedRoles, children }: { allowedRoles: Role[]; children: React.ReactNode }) {
   const { user } = useAuth()
@@ -28,6 +30,7 @@ function AppRoutes() {
       <Route path="/dashboard" element={<DashboardPage />} />
       <Route path="/vehicles" element={<VehiclesPage />} />
       <Route path="/salidas" element={<RoleRoute allowedRoles={exitRoles}><ExitsPage /></RoleRoute>} />
+      <Route path="/ordenes/nueva" element={<RoleRoute allowedRoles={orderRoles}><NewOrderPage /></RoleRoute>} />
     </Route>
     <Route path="*" element={<Navigate to="/dashboard" replace />} />
   </Routes>
