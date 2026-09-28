@@ -19,3 +19,8 @@ export interface OrderProvider { id: number; razon_social: string; nombre_comerc
 export interface OrderCreatePayload { numero_orden: string; vehiculo_id: number; kilometraje_orden: number; preventivo_ids: number[]; descripcion_correctivo?: string | null; proveedor_id?: number | null; estado_archivo: 'PENDIENTE' | 'ARCHIVADO' }
 export interface OrderPreventive { id: number; id_componente_origen: string; tarea: string }
 export interface OrderResponse { id: number; numero_orden: string; vehiculo_id: number | null; proveedor_id: number | null; fecha: string | null; descripcion: string; descripcion_correctivo: string | null; kilometraje_orden: number | null; dias_parada: number | null; monto: number | null; estado: string; estado_archivo: string | null; es_historico: boolean; fuente_origen: string | null; preventivos: OrderPreventive[] }
+export interface OrderListItem { id: number; numero_orden: string; id_orden_origen: string | null; fecha: string | null; placa: string | null; kilometraje_orden: number | null; proveedor: string | null; estado: string; estado_archivo: string | null; es_historico: boolean; monto: number | null; dias_parada: number | null }
+export interface OrderListResponse { items: OrderListItem[]; page: number; page_size: number; total: number; pages: number }
+export interface OrderFilters { search?: string; placa?: string; estado?: string; estado_archivo?: string; es_historico?: boolean; fecha_desde?: string; fecha_hasta?: string; page?: number; page_size?: number }
+export interface OrderPreventiveItem extends OrderPreventive { prioridad: string | null }
+export interface OrderDetail extends OrderResponse { id_orden_origen: string | null; placa: string | null; proveedor: string | null; preventivos: OrderPreventiveItem[] }

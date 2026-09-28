@@ -125,6 +125,8 @@ class OrdenServicio(TimestampMixin, Base):
     observaciones: Mapped[str | None] = mapped_column(Text)
     es_historico: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     fuente_origen: Mapped[str | None] = mapped_column(String(100))
+    vehiculo: Mapped[Vehiculo | None] = relationship()
+    proveedor: Mapped[Proveedor | None] = relationship()
     preventivos: Mapped[list["OrdenServicioPreventivo"]] = relationship(back_populates="orden_servicio")
 
 
