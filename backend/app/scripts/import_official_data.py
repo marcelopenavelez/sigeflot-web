@@ -21,6 +21,9 @@ def d(v): return v.date() if isinstance(v,datetime) else (v if hasattr(v,"year")
 def m(v):
     try:return Decimal(str(v)) if v not in (None,"") else Decimal("0")
     except Exception:return Decimal("0")
+def optional_money(v):
+    try:return Decimal(str(v)) if v not in (None,"") else None
+    except Exception:return None
 def data(w,prefix):
     s=next(x for x in w.worksheets if x.title.casefold().startswith(prefix.casefold())); vs=list(s.values); return [dict(zip(vs[0],r)) for r in vs[1:] if any(x not in (None,"") for x in r)]
 def put(session, model, column, value, values, stat):
@@ -28,12 +31,26 @@ def put(session, model, column, value, values, stat):
     old=session.scalar(select(model).where(column==value))
     if old: stat["EXISTS"]+=1; return old
     obj=model(**values); session.add(obj); session.flush(); stat["CREATED"]+=1; return obj
-def validate_target(database, production, source, environment=None):
-    """Require three independent controls before a production import."""
+def validate_target(database, production, source, environment=None, host=None, local_qa=False):
+    """Allow only explicitly authorized production, migration-test, or local-QA imports."""
     environment = os.environ if environment is None else environment
     if database == "sigeflot_migration_test":
+        if production or local_qa:
+            raise SystemExit("APPLY_BLOCKED: sigeflot_migration_test does not accept import mode flags")
+        return
+    if local_qa:
         if production:
-            raise SystemExit("APPLY_BLOCKED: --production cannot target sigeflot_migration_test")
+            raise SystemExit("APPLY_BLOCKED: --local-qa cannot be combined with --production")
+        if database != "sigeflot_local_qa":
+            raise SystemExit("APPLY_BLOCKED: --local-qa requires sigeflot_local_qa")
+        if (host or "").lower() not in {"localhost", "127.0.0.1"}:
+            raise SystemExit("APPLY_BLOCKED: --local-qa requires localhost or 127.0.0.1")
+        if environment.get("APP_ENV", "development").lower() == "production":
+            raise SystemExit("APPLY_BLOCKED: --local-qa is forbidden in production")
+        if environment.get("SIGEFLOT_LOCAL_QA_IMPORT_CONFIRMATION") != "IMPORT_SIGEFLOT_LOCAL_QA_2026":
+            raise SystemExit("APPLY_BLOCKED: local QA confirmation is invalid")
+        if Path(source).name != "Control_Flota_DIRESA.xlsx":
+            raise SystemExit("APPLY_BLOCKED: official source filename is required")
         return
     if not production:
         raise SystemExit("APPLY_BLOCKED: non-test targets require --production")
@@ -47,9 +64,9 @@ def validate_target(database, production, source, environment=None):
         raise SystemExit("APPLY_BLOCKED: official source filename is required")
 
 def safe(args):
-    database = make_url(get_settings().database_url).database
-    validate_target(database, args.production, args.source)
-    print(f"Target database: {database}")
+    target = make_url(get_settings().database_url)
+    validate_target(target.database, args.production, args.source, host=target.host, local_qa=args.local_qa)
+    print(f"Target database: {target.database}")
 def load(w,session,all_):
     S={x:{"CREATED":0,"EXISTS":0,"SKIPPED":0,"ERROR":0} for x in ["vehicles","drivers","providers","service-orders","maintenance","trips","catalogs"]}
     active,inactive=data(w,"Flota_Vehicular"),data(w,"Flota_Inactiva")
@@ -69,11 +86,11 @@ def load(w,session,all_):
       elif q:session.add(Proveedor(razon_social=q,es_historico=True,fuente_origen=SOURCE)); session.flush();S["providers"]["CREATED"]+=1
     P={x.razon_social.casefold():x.id for x in session.scalars(select(Proveedor)).all()}
     for r in data(w,"Orden"):
-      q=t(r.get("ID_Orden")); put(session,OrdenServicio,OrdenServicio.id_orden_origen,q,{"id_orden_origen":q,"numero_orden":q,"vehiculo_id":V.get(p(r.get("Placa"))),"proveedor_id":P.get((t(r.get("Proveedor_Taller")) or "").casefold()),"fecha":d(r.get("Fecha_Registro")),"descripcion":t(r.get("Checklist_Preventivo")) or t(r.get("Descripcion_Correctivo")) or "","monto":m(r.get("Costo_Total_Orden")),"estado":t(r.get("Estado_Archivo")) or "HISTORICO","es_historico":True,"fuente_origen":SOURCE},S["service-orders"])
+      q=t(r.get("ID_Orden")); preventivo=t(r.get("Checklist_Preventivo")); correctivo=t(r.get("Descripcion_Correctivo")); descripcion=" | ".join(x for x in (preventivo, correctivo) if x); put(session,OrdenServicio,OrdenServicio.id_orden_origen,q,{"id_orden_origen":q,"numero_orden":q,"vehiculo_id":V.get(p(r.get("Placa"))),"proveedor_id":P.get((t(r.get("Proveedor_Taller")) or "").casefold()),"fecha":d(r.get("Fecha_Registro")),"descripcion":descripcion,"descripcion_correctivo":correctivo,"kilometraje_orden":n(r.get("Kilometraje")),"monto":optional_money(r.get("Costo_Total_Orden")),"dias_parada":n(r.get("Dias_de_parada")),"estado":"HISTORICO","estado_archivo":t(r.get("Estado_Archivo")),"es_historico":True,"fuente_origen":SOURCE},S["service-orders"])
     O={x.id_orden_origen:x.id for x in session.scalars(select(OrdenServicio)).all()}
     for r in data(w,"HIST"):
       q=t(r.get("ID_Registro")); typ=(t(r.get("Tipo_Mantenimiento")) or "").upper(); typ=typ if typ in {"PREVENTIVO","CORRECTIVO"} else None
-      put(session,Mantenimiento,Mantenimiento.id_registro_origen,q,{"id_registro_origen":q,"orden_servicio_origen":t(r.get("Orden_Servicio")),"vehiculo_id":V.get(p(r.get("Placa"))),"orden_servicio_id":O.get(t(r.get("Orden_Servicio"))),"tipo":typ,"fecha":d(r.get("Fecha_Falla")),"kilometraje":n(r.get("Kilometraje")) or 0,"descripcion":t(r.get("Descripción_Reparación")) or "","costo":m(r.get("Costo_Total")),"estado":"HISTORICO","es_historico":True,"fuente_origen":SOURCE},S["maintenance"])
+      put(session,Mantenimiento,Mantenimiento.id_registro_origen,q,{"id_registro_origen":q,"orden_servicio_origen":t(r.get("Orden_Servicio")),"vehiculo_id":V.get(p(r.get("Placa"))),"orden_servicio_id":O.get(t(r.get("Orden_Servicio"))),"tipo":typ,"fecha":d(r.get("Fecha_Falla")),"kilometraje":n(r.get("Kilometraje")),"descripcion":t(r.get("Descripción_Reparación")) or "","costo":m(r.get("Costo_Total")),"estado":"HISTORICO","es_historico":True,"fuente_origen":SOURCE},S["maintenance"])
     for r in data(w,"Registro"):
       q=t(r.get("ID_Salida")); km=n(r.get("INGRESA TU KILOMETRAJE")); stamp=r.get("Marca temporal"); stamp=stamp if isinstance(stamp,datetime) else datetime.combine(d(stamp) or datetime.now().date(),datetime.min.time())
       if km is None or km<0:S["trips"]["SKIPPED"]+=1
@@ -87,7 +104,7 @@ def load(w,session,all_):
       else:session.add(CatalogoMantenimientoBIOrigen(fila_origen=row_number,variante=q[0],tarea_estandarizada=q[1],tipo=q[2]));exist.add(row_number);S["catalogs"]["CREATED"]+=1
     return S
 def main():
-  a=argparse.ArgumentParser();a.add_argument("--source",required=True);a.add_argument("--dry-run",action="store_true");a.add_argument("--apply",action="store_true");a.add_argument("--production",action="store_true");a.add_argument("--all",action="store_true");args=a.parse_args();w=load_workbook(Path(args.source),read_only=True,data_only=True)
+  a=argparse.ArgumentParser();a.add_argument("--source",required=True);a.add_argument("--dry-run",action="store_true");a.add_argument("--apply",action="store_true");a.add_argument("--production",action="store_true");a.add_argument("--local-qa",action="store_true");a.add_argument("--all",action="store_true");args=a.parse_args();w=load_workbook(Path(args.source),read_only=True,data_only=True)
   if not args.apply: print("DRY_RUN: no database writes; sheets=%d"%len(w.worksheets));return
   safe(args)
   with SessionLocal.begin() as s: print(load(w,s,args.all))

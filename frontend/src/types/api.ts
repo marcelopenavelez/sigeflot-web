@@ -13,3 +13,9 @@ export interface ExitVehicle {
   estado: string
 }
 export interface Exit { id: number; vehiculo_id: number; conductor_id: number; fecha_hora_salida: string; kilometraje_salida: number; observaciones: string | null; estado: string }
+export interface OrderVehicle { id: number; placa: string; marca: string | null; modelo: string | null; kilometraje_actual: number | null; estado: string }
+export interface MaintenanceCatalogItem { id: number; id_componente_origen: string; tarea: string; prioridad: string | null; intervalo_km: number | null; intervalo_dias: number | null }
+export interface OrderProvider { id: number; razon_social: string; nombre_comercial: string | null }
+export interface OrderCreatePayload { numero_orden: string; vehiculo_id: number; kilometraje_orden: number; preventivo_ids: number[]; descripcion_correctivo?: string | null; proveedor_id?: number | null; estado_archivo: 'PENDIENTE' | 'ARCHIVADO' }
+export interface OrderPreventive { id: number; id_componente_origen: string; tarea: string }
+export interface OrderResponse { id: number; numero_orden: string; vehiculo_id: number | null; proveedor_id: number | null; fecha: string | null; descripcion: string; descripcion_correctivo: string | null; kilometraje_orden: number | null; dias_parada: number | null; monto: number | null; estado: string; estado_archivo: string | null; es_historico: boolean; fuente_origen: string | null; preventivos: OrderPreventive[] }

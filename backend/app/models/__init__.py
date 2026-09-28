@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base, TimestampMixin
 
@@ -104,7 +104,11 @@ class Salida(TimestampMixin, Base):
 
 class OrdenServicio(TimestampMixin, Base):
     __tablename__ = "ordenes_servicio"
-    __table_args__ = (CheckConstraint("monto >= 0", name="ck_ordenes_monto"),)
+    __table_args__ = (
+        CheckConstraint("monto IS NULL OR monto >= 0", name="ck_ordenes_monto"),
+        CheckConstraint("kilometraje_orden IS NULL OR kilometraje_orden >= 0", name="ck_ordenes_kilometraje_orden"),
+        CheckConstraint("dias_parada IS NULL OR dias_parada >= 0", name="ck_ordenes_dias_parada"),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     id_orden_origen: Mapped[str | None] = mapped_column(String(100), unique=True)
     numero_orden: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
@@ -112,11 +116,26 @@ class OrdenServicio(TimestampMixin, Base):
     proveedor_id: Mapped[int | None] = mapped_column(ForeignKey("proveedores.id"))
     fecha: Mapped[date | None] = mapped_column(Date)
     descripcion: Mapped[str] = mapped_column(Text, nullable=False)
-    monto: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, nullable=False)
+    monto: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     estado: Mapped[str] = mapped_column(String(20), default="ABIERTA", nullable=False)
+    estado_archivo: Mapped[str | None] = mapped_column(String(20))
+    kilometraje_orden: Mapped[int | None] = mapped_column(Integer)
+    dias_parada: Mapped[int | None] = mapped_column(Integer)
+    descripcion_correctivo: Mapped[str | None] = mapped_column(Text)
     observaciones: Mapped[str | None] = mapped_column(Text)
     es_historico: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     fuente_origen: Mapped[str | None] = mapped_column(String(100))
+    preventivos: Mapped[list["OrdenServicioPreventivo"]] = relationship(back_populates="orden_servicio")
+
+
+class OrdenServicioPreventivo(Base):
+    __tablename__ = "orden_servicio_preventivos"
+    __table_args__ = (UniqueConstraint("orden_servicio_id", "catalogo_mantenimiento_origen_id", name="uq_orden_servicio_preventivo_catalogo"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    orden_servicio_id: Mapped[int] = mapped_column(ForeignKey("ordenes_servicio.id"), nullable=False)
+    catalogo_mantenimiento_origen_id: Mapped[int] = mapped_column(ForeignKey("catalogo_mantenimiento_origen.id"), nullable=False)
+    orden_servicio: Mapped[OrdenServicio] = relationship(back_populates="preventivos")
+    catalogo: Mapped["CatalogoMantenimientoOrigen"] = relationship(back_populates="ordenes_preventivas")
 
 
 class Mantenimiento(TimestampMixin, Base):
@@ -129,7 +148,7 @@ class Mantenimiento(TimestampMixin, Base):
     orden_servicio_id: Mapped[int | None] = mapped_column(ForeignKey("ordenes_servicio.id"))
     tipo: Mapped[str | None] = mapped_column(String(20))
     fecha: Mapped[date | None] = mapped_column(Date)
-    kilometraje: Mapped[int] = mapped_column(Integer, nullable=False)
+    kilometraje: Mapped[int | None] = mapped_column(Integer)
     descripcion: Mapped[str] = mapped_column(Text, nullable=False)
     costo: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0, nullable=False)
     estado: Mapped[str] = mapped_column(String(20), default="PENDIENTE", nullable=False)
@@ -149,6 +168,7 @@ class CatalogoMantenimientoOrigen(Base):
     intervalo_dias: Mapped[int | None] = mapped_column(Integer)
     umbral_alerta: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
     umbral_critico: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
+    ordenes_preventivas: Mapped[list[OrdenServicioPreventivo]] = relationship(back_populates="catalogo")
 
 
 class CatalogoMantenimientoBIOrigen(Base):

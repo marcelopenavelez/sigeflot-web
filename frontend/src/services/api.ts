@@ -1,4 +1,4 @@
-import type { Exit, ExitVehicle, User, Vehicle, VehicleList, VehiclePayload } from '../types/api'
+import type { Exit, ExitVehicle, MaintenanceCatalogItem, OrderCreatePayload, OrderProvider, OrderResponse, OrderVehicle, User, Vehicle, VehicleList, VehiclePayload } from '../types/api'
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000').replace(/\/$/, '')
 const TOKEN_KEY = 'sigeflot_access_token'
@@ -30,4 +30,9 @@ export const api = {
   deactivateVehicle: (id: number) => request<void>(`/api/v1/vehicles/${id}`, { method: 'DELETE' }),
   availableExitVehicles: () => request<ExitVehicle[]>('/api/v1/salidas/vehicles'),
   createExit: (payload: { vehiculo_id: number; kilometraje_salida: number; observaciones?: string }) => request<Exit>('/api/v1/salidas', { method: 'POST', body: JSON.stringify(payload) }),
+  orderVehicles: () => request<OrderVehicle[]>('/api/v1/ordenes-servicio/vehicles'),
+  maintenanceCatalog: (search = '') => request<MaintenanceCatalogItem[]>(`/api/v1/ordenes-servicio/maintenance-catalog?${new URLSearchParams(search ? { search } : '')}`),
+  orderProviders: () => request<OrderProvider[]>('/api/v1/ordenes-servicio/providers'),
+  createOrder: (payload: OrderCreatePayload) => request<OrderResponse>('/api/v1/ordenes-servicio', { method: 'POST', body: JSON.stringify(payload) }),
+  getOrder: (id: number) => request<OrderResponse>(`/api/v1/ordenes-servicio/${id}`),
 }
