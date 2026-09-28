@@ -52,6 +52,10 @@ class OrderPreventiveRead(BaseModel):
     tarea: str
 
 
+class OrderPreventiveDetailRead(OrderPreventiveRead):
+    prioridad: str | None
+
+
 class OrderRead(BaseModel):
     id: int
     numero_orden: str
@@ -68,6 +72,36 @@ class OrderRead(BaseModel):
     es_historico: bool
     fuente_origen: str | None
     preventivos: list[OrderPreventiveRead]
+
+
+class OrderDetailRead(OrderRead):
+    id_orden_origen: str | None
+    placa: str | None
+    proveedor: str | None
+    preventivos: list[OrderPreventiveDetailRead]
+
+
+class OrderListItemRead(BaseModel):
+    id: int
+    numero_orden: str
+    id_orden_origen: str | None
+    fecha: date | None
+    placa: str | None
+    kilometraje_orden: int | None
+    proveedor: str | None
+    estado: str
+    estado_archivo: str | None
+    es_historico: bool
+    monto: Decimal | None
+    dias_parada: int | None
+
+
+class OrderListResponse(BaseModel):
+    items: list[OrderListItemRead]
+    page: int
+    page_size: int
+    total: int
+    pages: int
 
 
 class OrderVehicleRead(BaseModel):

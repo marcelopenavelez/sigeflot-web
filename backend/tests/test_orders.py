@@ -136,3 +136,21 @@ def test_preventive_relationship_has_no_delete_cascade():
     assert "delete" not in OrdenServicio.preventivos.property.cascade
     assert OrdenServicioPreventivo.orden_servicio.property.mapper.class_ is OrdenServicio
     assert OrdenServicioPreventivo.catalogo.property.mapper.class_ is CatalogoMantenimientoOrigen
+
+
+def test_order_history_list_filters_and_detail_rbac(client, db_session):
+    vehicle_item = vehicle(db_session, placa="HIS-100")
+    provider = Proveedor(razon_social="Taller Histórico", activo=True); db_session.add(provider); db_session.flush()
+    catalog_item = catalog(db_session, component="HIS-CAT", tarea="Revisión histórica")
+    first = OrdenServicio(numero_orden="OS-HIST-001", id_orden_origen="ORIG-001", vehiculo_id=vehicle_item.id, proveedor_id=provider.id, fecha=date(2025, 1, 10), descripcion="Histórica", kilometraje_orden=None, monto=None, estado="HISTORICO", estado_archivo="ARCHIVADO", dias_parada=None, es_historico=True, fuente_origen="Control_Flota_DIRESA")
+    second = OrdenServicio(numero_orden="OS-OP-001", vehiculo_id=vehicle_item.id, fecha=date(2026, 2, 10), descripcion="Operativa", kilometraje_orden=120, monto=None, estado="ABIERTA", estado_archivo="PENDIENTE", es_historico=False, fuente_origen="OPERATIVO")
+    first.preventivos = [OrdenServicioPreventivo(catalogo=catalog_item)]
+    db_session.add_all([first, second]); db_session.commit(); db_session.refresh(first)
+    for role in ("ADMINISTRADOR", "MECANICO", "CONSULTA"):
+        assert client.get("/api/v1/ordenes-servicio?page=1&page_size=1", headers=headers(client, role)).status_code == 200
+    assert client.get("/api/v1/ordenes-servicio", headers=headers(client, "CHOFER")).status_code == 403
+    result = client.get("/api/v1/ordenes-servicio?search=HIST&placa=HIS-100&es_historico=true&fecha_desde=2025-01-01&fecha_hasta=2025-12-31", headers=headers(client)).json()
+    assert result["total"] == 1 and result["items"][0]["numero_orden"] == "OS-HIST-001" and result["items"][0]["kilometraje_orden"] is None
+    detail = client.get(f"/api/v1/ordenes-servicio/{first.id}", headers=headers(client, "CONSULTA"))
+    assert detail.status_code == 200 and detail.json()["placa"] == "HIS-100" and detail.json()["preventivos"][0]["prioridad"] == "ALTA"
+    assert client.get("/api/v1/ordenes-servicio/99999", headers=headers(client)).status_code == 404
