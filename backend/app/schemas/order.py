@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -102,6 +102,29 @@ class OrderListResponse(BaseModel):
     page_size: int
     total: int
     pages: int
+
+class OrderUpdate(BaseModel):
+    kilometraje_orden: int | None = Field(default=None, ge=0)
+    proveedor_id: int | None = Field(default=None, gt=0)
+    preventivo_ids: list[int] | None = None
+    descripcion_correctivo: str | None = Field(default=None, max_length=5000)
+    monto: Decimal | None = Field(default=None, ge=0)
+    dias_parada: int | None = Field(default=None, ge=0)
+
+class OrderArchiveUpdate(BaseModel):
+    estado_archivo: str
+    @field_validator("estado_archivo")
+    @classmethod
+    def validate_state(cls, value: str) -> str:
+        value = value.strip().upper()
+        if value not in ARCHIVE_STATES: raise ValueError("Estado de archivo inválido")
+        return value
+
+class OrderAuditRead(BaseModel):
+    accion: str
+    fecha_hora: datetime
+    usuario: str
+    cambios: dict
 
 
 class OrderVehicleRead(BaseModel):

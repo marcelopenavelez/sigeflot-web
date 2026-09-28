@@ -1,4 +1,4 @@
-import type { Exit, ExitVehicle, MaintenanceCatalogItem, OrderCreatePayload, OrderDetail, OrderFilters, OrderListResponse, OrderProvider, OrderResponse, OrderVehicle, User, Vehicle, VehicleList, VehiclePayload } from '../types/api'
+import type { Exit, ExitVehicle, MaintenanceCatalogItem, OrderArchiveUpdate, OrderAuditResponse, OrderCloseResponse, OrderCreatePayload, OrderDetail, OrderFilters, OrderListResponse, OrderProvider, OrderResponse, OrderUpdatePayload, OrderVehicle, User, Vehicle, VehicleList, VehiclePayload } from '../types/api'
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000').replace(/\/$/, '')
 const TOKEN_KEY = 'sigeflot_access_token'
@@ -36,4 +36,8 @@ export const api = {
   createOrder: (payload: OrderCreatePayload) => request<OrderResponse>('/api/v1/ordenes-servicio', { method: 'POST', body: JSON.stringify(payload) }),
   orders: (params: OrderFilters = {}) => request<OrderListResponse>(`/api/v1/ordenes-servicio?${new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== '').map(([key, value]) => [key, String(value)]))}`),
   getOrder: (id: number) => request<OrderDetail>(`/api/v1/ordenes-servicio/${id}`),
+  updateOrder: (id: number, payload: OrderUpdatePayload) => request<OrderResponse>(`/api/v1/ordenes-servicio/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  closeOrder: (id: number) => request<OrderCloseResponse>(`/api/v1/ordenes-servicio/${id}/cerrar`, { method: 'POST' }),
+  updateOrderArchive: (id: number, payload: OrderArchiveUpdate) => request<OrderResponse>(`/api/v1/ordenes-servicio/${id}/archivo`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  getOrderAudit: (id: number) => request<OrderAuditResponse>(`/api/v1/ordenes-servicio/${id}/auditoria`),
 }

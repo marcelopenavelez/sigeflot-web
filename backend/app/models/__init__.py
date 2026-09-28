@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base, TimestampMixin
 
@@ -125,9 +125,24 @@ class OrdenServicio(TimestampMixin, Base):
     observaciones: Mapped[str | None] = mapped_column(Text)
     es_historico: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     fuente_origen: Mapped[str | None] = mapped_column(String(100))
+    fecha_hora_cierre: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cerrado_por_usuario_id: Mapped[int | None] = mapped_column(ForeignKey("usuarios.id"))
     vehiculo: Mapped[Vehiculo | None] = relationship()
     proveedor: Mapped[Proveedor | None] = relationship()
     preventivos: Mapped[list["OrdenServicioPreventivo"]] = relationship(back_populates="orden_servicio")
+    auditoria: Mapped[list["OrdenServicioAuditoria"]] = relationship(back_populates="orden_servicio")
+
+
+class OrdenServicioAuditoria(Base):
+    __tablename__ = "orden_servicio_auditoria"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    orden_servicio_id: Mapped[int] = mapped_column(ForeignKey("ordenes_servicio.id"), nullable=False)
+    usuario_id: Mapped[int] = mapped_column(ForeignKey("usuarios.id"), nullable=False)
+    accion: Mapped[str] = mapped_column(String(40), nullable=False)
+    fecha_hora: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    cambios: Mapped[dict] = mapped_column(JSON, nullable=False)
+    orden_servicio: Mapped[OrdenServicio] = relationship(back_populates="auditoria")
+    usuario: Mapped[Usuario] = relationship()
 
 
 class OrdenServicioPreventivo(Base):
