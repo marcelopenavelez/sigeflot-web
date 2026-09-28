@@ -2,15 +2,16 @@ from datetime import date, datetime, timedelta, timezone
 from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.auth import get_current_user
 from app.core.database import get_db
-from app.models import CatalogoMantenimientoOrigen, OrdenServicio, OrdenServicioPreventivo, Proveedor, Usuario, Vehiculo
+from app.models import CatalogoMantenimientoOrigen, OrdenServicio, OrdenServicioAuditoria, OrdenServicioPreventivo, Proveedor, Usuario, Vehiculo
 from app.schemas.order import (MaintenanceCatalogRead, OrderCreate, OrderDetailRead, OrderListItemRead,
-    OrderListResponse, OrderPreventiveDetailRead, OrderPreventiveRead, OrderRead, OrderVehicleRead, ProviderRead)
+    OrderListResponse, OrderPreventiveDetailRead, OrderPreventiveRead, OrderRead, OrderVehicleRead, ProviderRead, OrderUpdate, OrderArchiveUpdate, OrderAuditRead)
 
 router = APIRouter(prefix="/api/v1/ordenes-servicio", tags=["ordenes-servicio"])
 ALLOWED_ROLES = {"ADMINISTRADOR", "MECANICO"}
@@ -30,6 +31,15 @@ def order_reader(user: Usuario = Depends(get_current_user)) -> Usuario:
     if user.rol.codigo not in READ_ROLES:
         raise HTTPException(status_code=403, detail="No tiene permisos para consultar órdenes de servicio")
     return user
+
+def mutable_order(db: Session, order_id: int) -> OrdenServicio:
+    order = db.scalar(select(OrdenServicio).options(selectinload(OrdenServicio.preventivos)).where(OrdenServicio.id == order_id).with_for_update())
+    if order is None: raise HTTPException(status_code=404, detail="Orden de servicio no encontrada")
+    if order.es_historico: raise HTTPException(status_code=409, detail="La orden histórica es solo lectura")
+    return order
+
+def audit(db: Session, order: OrdenServicio, user: Usuario, action: str, changes: dict) -> None:
+    db.add(OrdenServicioAuditoria(orden_servicio_id=order.id, usuario_id=user.id, accion=action, fecha_hora=datetime.now(LIMA), cambios=jsonable_encoder(changes)))
 
 
 def read_order(order: OrdenServicio) -> OrderRead:
@@ -183,3 +193,45 @@ def get_order(order_id: int, db: Session = Depends(get_db), _: Usuario = Depends
         proveedor=order.proveedor.razon_social if order.proveedor else None,
         preventivos=[OrderPreventiveDetailRead(id=item.catalogo.id, id_componente_origen=item.catalogo.id_componente_origen,
             tarea=item.catalogo.tarea, prioridad=item.catalogo.prioridad) for item in order.preventivos])
+
+@router.patch("/{order_id}", response_model=OrderRead)
+def update_order(order_id: int, payload: OrderUpdate, db: Session = Depends(get_db), user: Usuario = Depends(operational_user)):
+    order = mutable_order(db, order_id)
+    if order.estado != "ABIERTA": raise HTTPException(status_code=409, detail="La orden cerrada no puede editarse")
+    data = payload.model_dump(exclude_unset=True); before = {}
+    if "proveedor_id" in data and data["proveedor_id"] is not None:
+        provider = db.get(Proveedor, data["proveedor_id"])
+        if provider is None: raise HTTPException(status_code=422, detail="Proveedor no encontrado")
+        if not provider.activo: raise HTTPException(status_code=422, detail="El proveedor seleccionado está inactivo")
+    if "preventivo_ids" in data:
+        ids = data["preventivo_ids"] or []
+        if len(ids) != len(set(ids)): raise HTTPException(status_code=422, detail="No se permiten preventivos duplicados")
+        catalogs=list(db.scalars(select(CatalogoMantenimientoOrigen).where(CatalogoMantenimientoOrigen.id.in_(ids)))) if ids else []
+        if len(catalogs) != len(ids): raise HTTPException(status_code=422, detail="Uno o más preventivos no existen")
+        if not catalogs and not (data.get("descripcion_correctivo", order.descripcion_correctivo) or "").strip(): raise HTTPException(status_code=422, detail="Seleccione un preventivo o ingrese una descripción correctiva")
+        before["preventivo_ids"]={"antes":[x.catalogo_mantenimiento_origen_id for x in order.preventivos],"despues":ids}; order.preventivos=[OrdenServicioPreventivo(catalogo=x) for x in catalogs]
+    for field in ("kilometraje_orden","proveedor_id","descripcion_correctivo","monto","dias_parada"):
+        if field in data and getattr(order,field)!=data[field]: before[field]={"antes":getattr(order,field),"despues":data[field]}; setattr(order,field,data[field])
+    if order.kilometraje_orden is not None:
+        vehicle=db.get(Vehiculo,order.vehiculo_id)
+        if vehicle and (vehicle.kilometraje_actual is None or order.kilometraje_orden>vehicle.kilometraje_actual): vehicle.kilometraje_actual=order.kilometraje_orden
+    if not order.preventivos and not (order.descripcion_correctivo or "").strip(): raise HTTPException(status_code=422, detail="La orden requiere mantenimiento")
+    if before: audit(db,order,user,"EDITADA",before)
+    db.commit(); db.refresh(order); return read_order(order)
+
+@router.post("/{order_id}/cerrar", response_model=OrderRead)
+def close_order(order_id:int, db:Session=Depends(get_db), user:Usuario=Depends(operational_user)):
+    order=mutable_order(db,order_id)
+    if order.estado != "ABIERTA": raise HTTPException(status_code=409, detail="La orden ya está cerrada")
+    if not order.preventivos and not (order.descripcion_correctivo or "").strip(): raise HTTPException(status_code=422, detail="La orden requiere mantenimiento")
+    order.estado="CERRADA"; order.fecha_hora_cierre=datetime.now(LIMA); order.cerrado_por_usuario_id=user.id; audit(db,order,user,"CERRADA",{}); db.commit(); db.refresh(order); return read_order(order)
+
+@router.patch("/{order_id}/archivo", response_model=OrderRead)
+def archive_order(order_id:int,payload:OrderArchiveUpdate,db:Session=Depends(get_db),user:Usuario=Depends(operational_user)):
+    order=mutable_order(db,order_id); changes={"estado_archivo":{"antes":order.estado_archivo,"despues":payload.estado_archivo}}; order.estado_archivo=payload.estado_archivo; audit(db,order,user,"ESTADO_ARCHIVO_CAMBIADO",changes); db.commit(); db.refresh(order); return read_order(order)
+
+@router.get("/{order_id}/auditoria", response_model=list[OrderAuditRead])
+def order_audit(order_id:int,db:Session=Depends(get_db),_:Usuario=Depends(order_reader)):
+    if db.get(OrdenServicio,order_id) is None: raise HTTPException(status_code=404,detail="Orden de servicio no encontrada")
+    rows=db.scalars(select(OrdenServicioAuditoria).options(selectinload(OrdenServicioAuditoria.usuario)).where(OrdenServicioAuditoria.orden_servicio_id==order_id).order_by(OrdenServicioAuditoria.fecha_hora.desc())).all()
+    return [OrderAuditRead(accion=x.accion,fecha_hora=x.fecha_hora,usuario=f"{x.usuario.nombres} {x.usuario.apellidos}",cambios=x.cambios) for x in rows]

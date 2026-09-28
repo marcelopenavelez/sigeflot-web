@@ -24,3 +24,8 @@ export interface OrderListResponse { items: OrderListItem[]; page: number; page_
 export interface OrderFilters { search?: string; placa?: string; estado?: string; estado_archivo?: string; es_historico?: boolean; fecha_desde?: string; fecha_hasta?: string; page?: number; page_size?: number }
 export interface OrderPreventiveItem extends OrderPreventive { prioridad: string | null }
 export interface OrderDetail extends OrderResponse { id_orden_origen: string | null; placa: string | null; proveedor: string | null; preventivos: OrderPreventiveItem[] }
+export interface OrderUpdatePayload { kilometraje_orden?: number | null; proveedor_id?: number | null; preventivo_ids?: number[]; descripcion_correctivo?: string | null; monto?: number | null; dias_parada?: number | null }
+export interface OrderArchiveUpdate { estado_archivo: 'PENDIENTE' | 'ARCHIVADO' }
+export interface OrderAuditItem { accion: string; fecha_hora: string; usuario: string; cambios: Record<string, { antes: unknown; despues: unknown }> }
+export type OrderAuditResponse = OrderAuditItem[]
+export type OrderCloseResponse = OrderResponse
