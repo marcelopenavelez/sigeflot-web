@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
-from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base, TimestampMixin
 
@@ -131,6 +131,7 @@ class OrdenServicio(TimestampMixin, Base):
     proveedor: Mapped[Proveedor | None] = relationship()
     preventivos: Mapped[list["OrdenServicioPreventivo"]] = relationship(back_populates="orden_servicio")
     auditoria: Mapped[list["OrdenServicioAuditoria"]] = relationship(back_populates="orden_servicio")
+    documentos: Mapped[list["OrdenServicioDocumento"]] = relationship(back_populates="orden_servicio")
 
 
 class OrdenServicioAuditoria(Base):
@@ -143,6 +144,32 @@ class OrdenServicioAuditoria(Base):
     cambios: Mapped[dict] = mapped_column(JSON, nullable=False)
     orden_servicio: Mapped[OrdenServicio] = relationship(back_populates="auditoria")
     usuario: Mapped[Usuario] = relationship()
+
+
+class OrdenServicioDocumento(Base):
+    __tablename__ = "orden_servicio_documentos"
+    __table_args__ = (
+        CheckConstraint("tamano_bytes > 0", name="ck_orden_documento_tamano_positivo"),
+        CheckConstraint(
+            "categoria IN ('ORDEN_SERVICIO','FACTURA','INFORME_TECNICO','FOTOGRAFIA','OTRO')",
+            name="ck_orden_documento_categoria",
+        ),
+        Index("ix_orden_documentos_orden_activo", "orden_servicio_id", "activo"),
+    )
+    id: Mapped[int] = mapped_column(primary_key=True)
+    orden_servicio_id: Mapped[int] = mapped_column(ForeignKey("ordenes_servicio.id"), nullable=False)
+    nombre_original: Mapped[str] = mapped_column(String(255), nullable=False)
+    nombre_almacenado: Mapped[str] = mapped_column(String(80), nullable=False)
+    tipo_mime: Mapped[str] = mapped_column(String(100), nullable=False)
+    extension: Mapped[str] = mapped_column(String(10), nullable=False)
+    tamano_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    categoria: Mapped[str] = mapped_column(String(30), nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(500), unique=True, nullable=False)
+    fecha_subida: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    usuario_subida_id: Mapped[int] = mapped_column(ForeignKey("usuarios.id"), nullable=False)
+    activo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    orden_servicio: Mapped[OrdenServicio] = relationship(back_populates="documentos")
+    usuario_subida: Mapped[Usuario] = relationship()
 
 
 class OrdenServicioPreventivo(Base):

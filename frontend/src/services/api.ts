@@ -1,4 +1,4 @@
-import type { Exit, ExitVehicle, MaintenanceCatalogItem, OrderArchiveUpdate, OrderAuditResponse, OrderCloseResponse, OrderCreatePayload, OrderDetail, OrderFilters, OrderListResponse, OrderProvider, OrderResponse, OrderUpdatePayload, OrderVehicle, User, Vehicle, VehicleList, VehiclePayload } from '../types/api'
+import type { Exit, ExitVehicle, MaintenanceCatalogItem, OrderArchiveUpdate, OrderAuditResponse, OrderCloseResponse, OrderCreatePayload, OrderDetail, OrderDocumentCategory, OrderDocumentItem, OrderFilters, OrderListResponse, OrderProvider, OrderResponse, OrderUpdatePayload, OrderVehicle, User, Vehicle, VehicleList, VehiclePayload } from '../types/api'
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000').replace(/\/$/, '')
 const TOKEN_KEY = 'sigeflot_access_token'
@@ -13,13 +13,23 @@ export class ApiError extends Error {
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers)
   headers.set('Accept', 'application/json')
-  if (options.body) headers.set('Content-Type', 'application/json')
+  if (options.body && !(options.body instanceof FormData)) headers.set('Content-Type', 'application/json')
   const token = getToken(); if (token) headers.set('Authorization', `Bearer ${token}`)
   const response = await fetch(`${API_URL}${path}`, { ...options, headers })
   if (response.status === 204) return undefined as T
-  const body = await response.json().catch(() => ({})) as { detail?: string }
-  if (!response.ok) throw new ApiError(response.status, body.detail || 'No fue posible completar la operación.')
+  const body = await response.json().catch(() => ({})) as { detail?: unknown }
+  if (!response.ok) throw new ApiError(response.status, typeof body.detail === 'string' ? body.detail : 'No fue posible completar la operación.')
   return body as T
+}
+async function requestBlob(path: string): Promise<Blob> {
+  const headers = new Headers({ Accept: 'application/pdf,image/jpeg,image/png' })
+  const token = getToken(); if (token) headers.set('Authorization', `Bearer ${token}`)
+  const response = await fetch(`${API_URL}${path}`, { headers })
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({})) as { detail?: unknown }
+    throw new ApiError(response.status, typeof body.detail === 'string' ? body.detail : 'No fue posible descargar el documento.')
+  }
+  return response.blob()
 }
 export const api = {
   login: (email: string, password: string) => request<{ access_token: string }>('/api/v1/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
@@ -40,4 +50,11 @@ export const api = {
   closeOrder: (id: number) => request<OrderCloseResponse>(`/api/v1/ordenes-servicio/${id}/cerrar`, { method: 'POST' }),
   updateOrderArchive: (id: number, payload: OrderArchiveUpdate) => request<OrderResponse>(`/api/v1/ordenes-servicio/${id}/archivo`, { method: 'PATCH', body: JSON.stringify(payload) }),
   getOrderAudit: (id: number) => request<OrderAuditResponse>(`/api/v1/ordenes-servicio/${id}/auditoria`),
+  listOrderDocuments: (orderId: number) => request<OrderDocumentItem[]>(`/api/v1/ordenes-servicio/${orderId}/documentos`),
+  uploadOrderDocument: (orderId: number, file: File, categoria: OrderDocumentCategory) => {
+    const body = new FormData(); body.append('file', file); body.append('categoria', categoria)
+    return request<OrderDocumentItem>(`/api/v1/ordenes-servicio/${orderId}/documentos`, { method: 'POST', body })
+  },
+  downloadOrderDocument: (orderId: number, documentId: number) => requestBlob(`/api/v1/ordenes-servicio/${orderId}/documentos/${documentId}`),
+  deleteOrderDocument: (orderId: number, documentId: number) => request<void>(`/api/v1/ordenes-servicio/${orderId}/documentos/${documentId}`, { method: 'DELETE' }),
 }
