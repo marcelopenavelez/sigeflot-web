@@ -1,0 +1,15 @@
+.env
+.env.*
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+tests
+.data
+dist
+build
+.git
+.gitignore
+*.xlsx
+backups

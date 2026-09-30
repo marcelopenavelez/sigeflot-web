@@ -3,6 +3,7 @@
 postman/*.local.postman_environment.json
 .env.*
 !.env.example
+!.env.docker.example
 !backend/.env.seed.example
 venv/
 .venv/
