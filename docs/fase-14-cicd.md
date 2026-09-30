@@ -18,3 +18,5 @@ La colección CI comprueba `/health`, `/health/db`, login, usuario autenticado, 
 Las bases, usuarios y credenciales del workflow son efímeros y no pertenecen a desarrollo, QA ni producción. El pipeline no usa Railway, Netlify, S3 ni GitHub Secrets y no ejecuta deploy. Railway conserva el despliegue del backend y sus migraciones de pre-deploy; Netlify conserva el despliegue del frontend.
 
 Para una ejecución local equivalente se requieren MySQL aislado, Python 3.12, Node 24 y Docker. Los reportes Newman y archivos de entorno locales permanecen ignorados por Git.
+
+El workbook oficial `Control_Flota_DIRESA.xlsx` no se versiona. La prueba de importación se ejecuta localmente cuando el archivo está disponible; GitHub CI omite únicamente esa prueba cuando el workbook no existe.
