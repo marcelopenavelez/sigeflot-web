@@ -1,0 +1,297 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  APP_ENV: test
+  DATABASE_URL: mysql+pymysql://sigeflot_ci:ci-only-database-password@127.0.0.1:3306/sigeflot_ci_test?charset=utf8mb4
+  JWT_ALGORITHM: HS256
+  ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+  CORS_ORIGINS: http://localhost:5173
+  STORAGE_BACKEND: local
+  STORAGE_LOCAL_ROOT: /tmp/sigeflot-ci-documents
+  STORAGE_PREFIX: ordenes
+  STORAGE_MAX_FILE_SIZE_BYTES: "10485760"
+
+jobs:
+  backend-tests:
+    name: backend-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      JWT_SECRET_KEY: ci-only-jwt-key-not-valid-outside-actions
+    services:
+      mysql:
+        image: mysql:9
+        env:
+          MYSQL_DATABASE: sigeflot_ci_test
+          MYSQL_USER: sigeflot_ci
+          MYSQL_PASSWORD: ci-only-database-password
+          MYSQL_ROOT_PASSWORD: ci-only-root-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root -pci-only-root-password --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+          --health-start-period=30s
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Wait for MySQL
+        run: |
+          python - <<'PY'
+          import time
+          import pymysql
+
+          for attempt in range(30):
+              try:
+                  connection = pymysql.connect(
+                      host="127.0.0.1",
+                      port=3306,
+                      user="sigeflot_ci",
+                      password="ci-only-database-password",
+                      database="sigeflot_ci_test",
+                  )
+                  connection.close()
+                  break
+              except pymysql.MySQLError:
+                  if attempt == 29:
+                      raise
+                  time.sleep(2)
+          PY
+
+      - name: Apply Alembic migrations
+        run: python -m alembic upgrade head
+
+      - name: Run backend tests
+        run: python -m pytest
+
+  frontend-quality:
+    name: frontend-quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Lint frontend
+        run: npm run lint
+
+      - name: Build frontend
+        env:
+          VITE_API_URL: http://localhost:8000
+        run: npm run build
+
+  docker-validation:
+    name: docker-validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create temporary Docker environment
+        shell: bash
+        run: |
+          cat > .env.docker <<'EOF'
+          APP_ENV=development
+          JWT_SECRET_KEY=ci-only-docker-jwt-key
+          JWT_ALGORITHM=HS256
+          ACCESS_TOKEN_EXPIRE_MINUTES=30
+          CORS_ORIGINS=http://localhost:5173
+          MYSQL_DATABASE=sigeflot_docker_ci
+          MYSQL_USER=sigeflot_ci
+          MYSQL_PASSWORD=ci-only-docker-password
+          MYSQL_ROOT_PASSWORD=ci-only-docker-root-password
+          DATABASE_URL=mysql+pymysql://sigeflot_ci:ci-only-docker-password@db:3306/sigeflot_docker_ci?charset=utf8mb4
+          STORAGE_BACKEND=local
+          STORAGE_LOCAL_ROOT=/app/.data/documentos
+          STORAGE_PREFIX=ordenes
+          STORAGE_MAX_FILE_SIZE_BYTES=10485760
+          VITE_API_URL=http://localhost:8000
+          EOF
+
+      - name: Validate Compose configuration
+        run: docker compose --env-file .env.docker config --quiet
+
+      - name: Build backend image
+        run: docker build -t sigeflot-backend-ci ./backend
+
+      - name: Build frontend image
+        run: docker build -t sigeflot-frontend-ci ./frontend
+
+      - name: Remove temporary Docker environment
+        if: always()
+        run: rm -f .env.docker
+
+  api-newman:
+    name: api-newman
+    needs:
+      - backend-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:9
+        env:
+          MYSQL_DATABASE: sigeflot_ci_test
+          MYSQL_USER: sigeflot_ci
+          MYSQL_PASSWORD: ci-only-database-password
+          MYSQL_ROOT_PASSWORD: ci-only-root-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root -pci-only-root-password --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+          --health-start-period=30s
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: python -m pip install -r requirements.txt
+
+      - name: Generate ephemeral API credentials
+        shell: bash
+        run: |
+          jwt_secret="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+          admin_password="$(python -c 'import secrets; print(secrets.token_urlsafe(24))')"
+          echo "::add-mask::$jwt_secret"
+          echo "::add-mask::$admin_password"
+          echo "JWT_SECRET_KEY=$jwt_secret" >> "$GITHUB_ENV"
+          echo "CI_ADMIN_PASSWORD=$admin_password" >> "$GITHUB_ENV"
+
+      - name: Wait for MySQL
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import time
+          import pymysql
+
+          for attempt in range(30):
+              try:
+                  connection = pymysql.connect(
+                      host="127.0.0.1",
+                      port=3306,
+                      user="sigeflot_ci",
+                      password="ci-only-database-password",
+                      database="sigeflot_ci_test",
+                  )
+                  connection.close()
+                  break
+              except pymysql.MySQLError:
+                  if attempt == 29:
+                      raise
+                  time.sleep(2)
+          PY
+
+      - name: Apply Alembic migrations
+        working-directory: backend
+        run: python -m alembic upgrade head
+
+      - name: Create ephemeral CI administrator
+        working-directory: backend
+        env:
+          SIGEFLOT_ADMINISTRADOR_NOMBRES: CI
+          SIGEFLOT_ADMINISTRADOR_APELLIDOS: Administrator
+          SIGEFLOT_ADMINISTRADOR_EMAIL: ci.admin@example.com
+        run: SIGEFLOT_ADMINISTRADOR_PASSWORD="$CI_ADMIN_PASSWORD" python -m app.scripts.seed_users
+
+      - name: Start API
+        working-directory: backend
+        shell: bash
+        run: |
+          python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/sigeflot-api.log 2>&1 &
+          echo $! > /tmp/sigeflot-api.pid
+
+      - name: Wait for API healthchecks
+        shell: bash
+        run: |
+          for attempt in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:8000/health >/dev/null \
+              && curl --fail --silent http://127.0.0.1:8000/health/db >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          tail -n 100 /tmp/sigeflot-api.log
+          exit 1
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: postman/package-lock.json
+
+      - name: Install Newman
+        working-directory: postman
+        run: npm ci
+
+      - name: Run API collection
+        working-directory: postman
+        run: >-
+          npx newman run SIGEFLOT-CI.postman_collection.json
+          --env-var base_url=http://127.0.0.1:8000
+          --env-var ci_email=ci.admin@example.com
+          --env-var ci_password="${CI_ADMIN_PASSWORD}"
+          --reporters cli,junit
+          --reporter-junit-export newman-report.xml
+
+      - name: Upload Newman JUnit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: newman-junit-report
+          path: postman/newman-report.xml
+          if-no-files-found: warn
+          retention-days: 14
