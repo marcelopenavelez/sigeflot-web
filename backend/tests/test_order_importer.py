@@ -1,6 +1,7 @@
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
 from openpyxl import load_workbook
 from sqlalchemy import func, select
 
@@ -12,6 +13,11 @@ WORKBOOK = Path(__file__).resolve().parents[2] / "Control_Flota_DIRESA.xlsx"
 
 
 def test_order_import_preserves_official_fields_and_is_idempotent(db_session):
+    if not WORKBOOK.exists():
+        pytest.skip(
+            "Control_Flota_DIRESA.xlsx is a local official-data source and is intentionally not versioned"
+        )
+
     workbook = load_workbook(WORKBOOK, read_only=True, data_only=True)
     source_orders = data(workbook, "Orden")
 
