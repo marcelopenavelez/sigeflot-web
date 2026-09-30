@@ -29,3 +29,16 @@ export interface OrderArchiveUpdate { estado_archivo: 'PENDIENTE' | 'ARCHIVADO' 
 export interface OrderAuditItem { accion: string; fecha_hora: string; usuario: string; cambios: Record<string, { antes: unknown; despues: unknown }> }
 export type OrderAuditResponse = OrderAuditItem[]
 export type OrderCloseResponse = OrderResponse
+export type OrderDocumentCategory = 'ORDEN_SERVICIO' | 'FACTURA' | 'INFORME_TECNICO' | 'FOTOGRAFIA' | 'OTRO'
+export interface OrderDocumentItem {
+  id: number
+  nombre_original: string
+  tipo_mime: string
+  extension: string
+  tamano_bytes: number
+  categoria: OrderDocumentCategory
+  fecha_subida: string
+  usuario: string
+  activo: boolean
+}
+export interface OrderDocumentUploadPayload { file: File; categoria: OrderDocumentCategory }
