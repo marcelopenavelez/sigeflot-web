@@ -1,0 +1,103 @@
+services:
+  db:
+    image: mysql:9
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - sigeflot_mysql_data:/var/lib/mysql
+    networks:
+      - sigeflot-network
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$${MYSQL_ROOT_PASSWORD}\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 30s
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["alembic", "upgrade", "head"]
+    environment: &backend-environment
+      APP_ENV: ${APP_ENV}
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_ALGORITHM: ${JWT_ALGORITHM}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      STORAGE_BACKEND: ${STORAGE_BACKEND}
+      STORAGE_LOCAL_ROOT: ${STORAGE_LOCAL_ROOT}
+      STORAGE_PREFIX: ${STORAGE_PREFIX}
+      STORAGE_MAX_FILE_SIZE_BYTES: ${STORAGE_MAX_FILE_SIZE_BYTES}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - sigeflot-network
+    restart: "no"
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment: *backend-environment
+    ports:
+      - "8000:8000"
+    volumes:
+      - sigeflot_documents:/app/.data/documentos
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - sigeflot-network
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import json,urllib.request; data=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health/db')); assert data.get('database') == 'connected'"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      VITE_API_URL: ${VITE_API_URL}
+    ports:
+      - "5173:5173"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - sigeflot-network
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:5173').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+networks:
+  sigeflot-network:
+    name: sigeflot-network
+
+volumes:
+  sigeflot_mysql_data:
+    name: sigeflot_mysql_data
+  sigeflot_documents:
+    name: sigeflot_documents
