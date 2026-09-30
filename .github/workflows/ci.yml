@@ -121,6 +121,46 @@ jobs:
           VITE_API_URL: http://localhost:8000
         run: npm run build
 
+  lighthouse:
+    name: lighthouse
+    needs:
+      - frontend-quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend for Lighthouse
+        env:
+          VITE_API_URL: http://localhost:8000
+        run: npm run build
+
+      - name: Run Lighthouse CI
+        run: npm run lighthouse
+
+      - name: Upload Lighthouse reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-reports
+          path: frontend/lighthouse-reports
+          if-no-files-found: warn
+          retention-days: 14
+
   docker-validation:
     name: docker-validation
     runs-on: ubuntu-latest

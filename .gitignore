@@ -22,3 +22,5 @@ database/backups/
 backend/.data/
 postman/newman-report.xml
 postman/newman/
+frontend/.lighthouseci/
+frontend/lighthouse-reports/
