@@ -20,3 +20,5 @@ Control_Flota_DIRESA.xlsx
 database/import/
 database/backups/
 backend/.data/
+postman/newman-report.xml
+postman/newman/

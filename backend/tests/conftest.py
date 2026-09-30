@@ -14,8 +14,14 @@ from app.core.config import get_settings
 # Toma las credenciales reales de backend/.env
 base_url = make_url(get_settings().database_url)
 
-# Cambia únicamente la base de datos a la base de pruebas
-test_url = base_url.set(database="sigeflot_test")
+# Conserva la base exclusiva de CI cuando fue configurada expresamente.
+# En desarrollo local mantiene la base histórica sigeflot_test.
+test_database = (
+    "sigeflot_ci_test"
+    if base_url.database == "sigeflot_ci_test"
+    else "sigeflot_test"
+)
+test_url = base_url.set(database=test_database)
 
 os.environ["DATABASE_URL"] = test_url.render_as_string(
     hide_password=False
@@ -40,8 +46,8 @@ TEST_PASSWORD_HASH = hash_password("PasswordSeguro!1")
 
 
 # Protección: nunca ejecutar pruebas sobre la BD principal
-assert str(engine.url).split("?")[0].endswith("/sigeflot_test"), (
-    "Pytest debe ejecutarse únicamente sobre sigeflot_test"
+assert engine.url.database in {"sigeflot_test", "sigeflot_ci_test"}, (
+    "Pytest debe ejecutarse únicamente sobre una base de pruebas autorizada"
 )
 
 

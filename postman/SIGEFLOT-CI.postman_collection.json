@@ -1,0 +1,105 @@
+{
+  "info": {
+    "name": "SIGEFLOT API CI",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:8000" },
+    { "key": "ci_email", "value": "" },
+    { "key": "ci_password", "value": "" },
+    { "key": "access_token", "value": "" },
+    { "key": "vehicle_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": { "method": "GET", "url": "{{base_url}}/health" },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('health responde 200', () => pm.response.to.have.status(200));",
+        "pm.test('servicio saludable', () => pm.expect(pm.response.json().status).to.eql('ok'));"
+      ] } }]
+    },
+    {
+      "name": "Health DB",
+      "request": { "method": "GET", "url": "{{base_url}}/health/db" },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('health db responde 200', () => pm.response.to.have.status(200));",
+        "pm.test('base conectada', () => pm.expect(pm.response.json().database).to.eql('connected'));"
+      ] } }]
+    },
+    {
+      "name": "Login CI",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\"email\":\"{{ci_email}}\",\"password\":\"{{ci_password}}\"}" },
+        "url": "{{base_url}}/api/v1/auth/login"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('login responde 200', () => pm.response.to.have.status(200));",
+        "const body = pm.response.json();",
+        "pm.test('JWT presente', () => pm.expect(body.access_token).to.be.a('string').and.not.empty);",
+        "pm.collectionVariables.set('access_token', body.access_token);"
+      ] } }]
+    },
+    {
+      "name": "Authenticated User",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}", "type": "text" }],
+        "url": "{{base_url}}/api/v1/auth/me"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('me responde 200', () => pm.response.to.have.status(200));",
+        "const body = pm.response.json();",
+        "pm.test('usuario CI administrador', () => { pm.expect(body.email).to.eql(pm.variables.get('ci_email')); pm.expect(body.rol).to.eql('ADMINISTRADOR'); });"
+      ] } }]
+    },
+    {
+      "name": "Create CI Vehicle",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{access_token}}", "type": "text" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": { "mode": "raw", "raw": "{\"placa\":\"TESTCI01\",\"marca\":\"CI\",\"modelo\":\"PIPELINE\",\"anio\":2026,\"tipo\":\"PRUEBA\",\"kilometraje_actual\":0,\"estado\":\"OPERATIVO\"}" },
+        "url": "{{base_url}}/api/v1/vehicles"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('vehiculo CI creado', () => pm.response.to.have.status(201));",
+        "const body = pm.response.json();",
+        "pm.test('placa CI preservada', () => pm.expect(body.placa).to.eql('TESTCI01'));",
+        "pm.collectionVariables.set('vehicle_id', body.id);"
+      ] } }]
+    },
+    {
+      "name": "List Vehicles",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}", "type": "text" }],
+        "url": "{{base_url}}/api/v1/vehicles?page=1&page_size=20"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('vehiculos responde 200', () => pm.response.to.have.status(200));",
+        "const body = pm.response.json();",
+        "pm.test('estructura paginada de vehiculos', () => { ['items', 'total', 'page', 'page_size'].forEach(key => pm.expect(body).to.have.property(key)); });",
+        "pm.test('incluye vehiculo CI', () => pm.expect(body.items.some(item => item.id === Number(pm.collectionVariables.get('vehicle_id')))).to.be.true);"
+      ] } }]
+    },
+    {
+      "name": "List Service Orders",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{access_token}}", "type": "text" }],
+        "url": "{{base_url}}/api/v1/ordenes-servicio?page=1&page_size=20"
+      },
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('ordenes responde 200', () => pm.response.to.have.status(200));",
+        "const body = pm.response.json();",
+        "pm.test('estructura paginada de ordenes', () => { ['items', 'total', 'page', 'page_size', 'pages'].forEach(key => pm.expect(body).to.have.property(key)); });",
+        "pm.test('base CI inicia sin ordenes', () => { pm.expect(body.items).to.be.an('array'); pm.expect(body.total).to.eql(0); });"
+      ] } }]
+    }
+  ]
+}
